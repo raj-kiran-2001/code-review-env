@@ -1,0 +1,25 @@
+spec_version: 1
+name: code_review_env
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
+
+tasks:
+  - id: task1_easy
+    difficulty: easy
+    description: "Find the off-by-one error and undefined variable in a 20-line auth module"
+  - id: task2_medium
+    difficulty: medium
+    description: "Identify a race condition and missing auth check across 2 files"
+  - id: task3_hard
+    difficulty: hard
+    description: "Find SQL injection, double discount bug, and missing db.commit() while ignoring a red herring"
+
+metadata:
+  domain: software-engineering
+  tags: [code-review, security, bugs, real-world]
+  description: >
+    An RL environment where an AI agent reviews pull requests and identifies
+    bugs, security vulnerabilities, and logic errors. Tasks range from easy
+    single-bug PRs to hard multi-file PRs with red herrings.
