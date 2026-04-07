@@ -1,0 +1,31 @@
+  [DEBUG] issue[0] file=auth.py line=15 type=bug desc=Off-by-one error in loop, causing an index out-of-range exception when accessing
+  [DEBUG] issue[1] file=auth.py line=15 type=bug desc=Undefined variable 'users' in the context of get_all_users function.
+  [DEBUG] found=[] missed=['bug_1'] false_positives=2
+  [DEBUG] issue[0] file=auth.py line=24 type=bug desc=Off-by-one error in the loop condition, causing an index out of range error when
+  [DEBUG] found=['bug_1'] missed=[] false_positives=0
+  [DEBUG] issue[0] file=orders.py line=9 type=bug desc=Race condition: The lock is acquired after the initial inventory check, allowing
+  [DEBUG] issue[1] file=api.py line=18 type=security desc=No authentication check on admin endpoint: The '/admin/orders' endpoint is acces
+  [DEBUG] found=['bug_1', 'bug_2'] missed=[] false_positives=0
+  [DEBUG] issue[0] file=reports.py line=16 type=security desc=SQL injection — query concatenated directly into the SQL statement without param
+  [DEBUG] issue[1] file=reports.py line=22 type=logic desc=Discount applied twice — first subtracted then multiplied again, leading to inco
+  [DEBUG] issue[2] file=reports.py line=47 type=security desc=No authentication or authorization checks on the `get_user_activity` function, w
+  [DEBUG] issue[3] file=reports.py line=58 type=missing resource cleanup desc=db.commit() missing — audit logs never actually saved to the database.
+  [DEBUG] found=['bug_1', 'bug_2', 'bug_3'] missed=[] false_positives=1
+  [DEBUG] issue[0] file=reports.py line=16 type=security desc=SQL injection — query concatenated directly into SQL statement without parameter
+  [DEBUG] issue[1] file=reports.py line=27 type=bug desc=Discount applied twice — first subtracting the discount, then multiplying by (1 
+  [DEBUG] issue[2] file=reports.py line=54 type=bug desc=db.commit() missing — audit logs never actually saved to the database.
+  [DEBUG] found=['bug_1', 'bug_2', 'bug_3'] missed=[] false_positives=0
+
+--- SUMMARY ---
+  LLM Agent Results:
+    task1_easy: 0.999
+    task2_medium: 0.999
+    task3_hard: 0.999
+    Average: 0.999
+  Grader Showcase (no LLM — deterministic):
+    showcase_partial_1of3: 0.330 (done=False)
+    showcase_partial_1of2: 0.500 (done=False)
+    showcase_red_herring: 0.900 (done=False)
+    showcase_empty_review: 0.001 (done=False)
+  Unique scores: 5 (need ≥ 4 for diversity)
+  Range: [0.001, 0.999]

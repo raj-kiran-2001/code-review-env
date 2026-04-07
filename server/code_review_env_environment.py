@@ -60,7 +60,7 @@ TASKS = {
                 "id": "bug_1",
                 "file": "auth.py",
                 "line": 24,
-                "keywords": ["off-by-one", "index", "range", "len", "out of range", "users not defined", "NameError", "scope"],
+                "keywords": ["off-by-one", "index", "range", "len", "out of range", "users not defined", "NameError", "scope", "undefined", "bounds", "IndexError", "not in scope", "global", "local variable", "not defined", "off by one", "boundary"],
                 "description": "off-by-one error and undefined variable 'users' in get_all_users()"
             }
         ]
@@ -118,14 +118,14 @@ TASKS = {
                 "id": "bug_1",
                 "file": "orders.py",
                 "line": 11,
-                "keywords": ["race condition", "lock", "atomic", "thread", "concurrent", "not protected", "outside lock"],
+                "keywords": ["race condition", "lock", "atomic", "thread", "concurrent", "not protected", "outside lock", "TOCTOU", "check-then-act", "check before", "synchronization", "mutex", "critical section", "check outside", "before acquiring", "not atomic", "thread-safe", "thread safe"],
                 "description": "race condition — inventory check happens outside the lock"
             },
             {
                 "id": "bug_2",
                 "file": "api.py",
                 "line": 19,
-                "keywords": ["auth", "authentication", "unauthorized", "admin", "no check", "unprotected", "access control"],
+                "keywords": ["auth", "authentication", "unauthorized", "admin", "no check", "unprotected", "access control", "unauthenticated", "authorization", "security", "missing auth", "no auth", "permission", "privilege", "restricted"],
                 "description": "admin endpoint has no authentication check"
             }
         ]
@@ -202,21 +202,21 @@ TASKS = {
                 "id": "bug_1",
                 "file": "reports.py",
                 "line": 11,
-                "keywords": ["sql injection", "injection", "f-string", "format", "concatenat", "unsanitized", "parameterized"],
+                "keywords": ["sql injection", "injection", "f-string", "format", "concatenat", "unsanitized", "parameterized", "string interpolation", "user input", "unescaped", "unsafe", "sql", "query", "sanitiz"],
                 "description": "SQL injection via f-string in search_users()"
             },
             {
                 "id": "bug_2",
                 "file": "reports.py",
                 "line": 22,
-                "keywords": ["discount", "twice", "double", "applied twice", "wrong", "calculation", "incorrect"],
+                "keywords": ["discount", "twice", "double", "applied twice", "wrong", "calculation", "incorrect", "compounding", "redundant", "multiplied", "double discount", "over-discount", "logic error"],
                 "description": "discount applied twice in calculate_discount()"
             },
             {
                 "id": "bug_3",
                 "file": "reports.py",
                 "line": 55,
-                "keywords": ["commit", "not saved", "missing commit", "transaction", "rollback", "persist", "never saved"],
+                "keywords": ["commit", "not saved", "missing commit", "transaction", "rollback", "persist", "never saved", "flush", "write", "save", "db.commit", "not committed", "uncommitted", "not persisted"],
                 "description": "db.commit() missing — audit logs never persisted"
             },
             {
@@ -246,7 +246,7 @@ def grade(action: CodeReviewAction, task_id: str) -> dict:
     for bug in planted:
         matched = False
         for agent_issue in action.issues:
-            line_close = abs(agent_issue.line - bug["line"]) <= 3
+            line_close = abs(agent_issue.line - bug["line"]) <= 5
             keyword_hit = any(
                 kw.lower() in agent_issue.description.lower()
                 for kw in bug["keywords"]
@@ -262,20 +262,22 @@ def grade(action: CodeReviewAction, task_id: str) -> dict:
     # penalise flagging red herrings
     for rh in red_herrings:
         for agent_issue in action.issues:
-            line_close = abs(agent_issue.line - rh["line"]) <= 3
+            line_close = abs(agent_issue.line - rh["line"]) <= 5
             if line_close:
                 false_positives += 1
 
     # penalise general false positives (issues not near any planted bug)
     all_bug_lines = [b["line"] for b in task["planted_bugs"]]
     for agent_issue in action.issues:
-        near_any = any(abs(agent_issue.line - bl) <= 3 for bl in all_bug_lines)
+        near_any = any(abs(agent_issue.line - bl) <= 5 for bl in all_bug_lines)
         if not near_any:
             false_positives += 1
 
     raw = len(found_ids) / len(planted) if planted else 0.0
     penalty = min(false_positives * 0.1, 0.3)
     score = round(max(0.0, raw - penalty), 2)
+    score = max(0.001, min(score, 0.999))
+    score = round(score, 3)
 
     return {
         "score": score,
@@ -286,10 +288,24 @@ def grade(action: CodeReviewAction, task_id: str) -> dict:
     }
 
 
+# Generated by GitHub Copilot
 # ── ENVIRONMENT ─────────────────────────────────────────────────────────────
 
 class CodeReviewEnvironment(Environment):
+    """Multi-step code-review environment.
+
+    The agent gets up to MAX_STEPS attempts per episode.  After each
+    non-final attempt the observation includes actionable feedback
+    (how many bugs were found, how many remain, and — from attempt 2
+    onwards — which *files* still contain unfound issues).  The agent
+    must submit a *complete* revised review each step.
+
+    Early termination happens when the agent achieves a perfect review
+    (all bugs found, zero false-positives).
+    """
+
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
+    MAX_STEPS: int = 3  # maximum review attempts per episode
 
     def __init__(self):
         self._state = State(episode_id=str(uuid4()), step_count=0)
@@ -313,25 +329,89 @@ class CodeReviewEnvironment(Environment):
             instructions=(
                 "Review this pull request carefully. "
                 "Identify all bugs, security issues, and logic errors. "
-                "For each issue report the filename, line number, issue type, and a clear description."
+                "For each issue report the filename, line number, issue type, "
+                "and a clear description. "
+                f"You have up to {self.MAX_STEPS} attempts to find all issues. "
+                "After each attempt you will receive feedback to improve your review."
             ),
             done=False,
             reward=0.0,
         )
 
     def step(self, action: CodeReviewAction) -> CodeReviewObservation:
+        """Grade the agent's review and return feedback or final result.
+
+        Returns done=True when the agent found every bug with zero
+        false-positives, or when MAX_STEPS is reached.
+        """
         self._state.step_count += 1
         result = grade(action, self._current_task_id)
-
         task = TASKS[self._current_task_id]
+        step_num = self._state.step_count
+
+        # Determine whether the episode should end
+        perfect_review = (
+            len(result["missed"]) == 0 and result["false_positives"] == 0
+        )
+        at_max_steps = step_num >= self.MAX_STEPS
+        is_done = perfect_review or at_max_steps
+
+        if is_done:
+            instructions = "Review complete."
+        else:
+            # Build actionable feedback for the next attempt
+            found_count = len(result["found"])
+            total = result["total_planted"]
+            missed_count = len(result["missed"])
+            fp_count = result["false_positives"]
+
+            feedback = [
+                f"Feedback on attempt {step_num}/{self.MAX_STEPS}:",
+                f"You correctly identified {found_count} out of {total} real issues.",
+            ]
+
+            if missed_count > 0:
+                feedback.append(
+                    f"There are {missed_count} more real issues to find."
+                )
+                # From attempt 2 onward, hint at which files still have bugs
+                if step_num >= 2:
+                    planted = [
+                        b for b in task["planted_bugs"]
+                        if not b.get("is_red_herring", False)
+                    ]
+                    missed_files = sorted({
+                        b["file"] for b in planted
+                        if b["id"] in result["missed"]
+                    })
+                    if missed_files:
+                        feedback.append(
+                            f"Hint: look more carefully at "
+                            f"{', '.join(missed_files)}."
+                        )
+
+            if fp_count > 0:
+                feedback.append(
+                    f"You reported {fp_count} false positive(s). "
+                    "Remove issues that are not real bugs."
+                )
+
+            feedback.append(f"Current score: {result['score']:.3f}.")
+            feedback.append(
+                "Submit a COMPLETE revised review with ALL issues "
+                "(including ones you already found correctly)."
+            )
+
+            instructions = " ".join(feedback)
+
         return CodeReviewObservation(
             task_id=self._current_task_id,
             difficulty=task["difficulty"],
             pr_title=task["pr_title"],
             pr_description=task["pr_description"],
             diff=task["diff"],
-            instructions="Review complete.",
-            done=True,
+            instructions=instructions,
+            done=is_done,
             reward=result["score"],
             metadata=result,
         )
